@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charming Hera - SBOM Findings Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #2196F3, #21CBF3);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .upload-section {
+            padding: 30px;
+            text-align: center;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .file-input-container {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            background: linear-gradient(45deg, #FF6B6B, #FF8E53);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        .file-input-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+
+        .file-input-container input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border-left: 5px solid;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card.packages { border-left-color: #2196F3; }
+        .stat-card.findings { border-left-color: #FF9800; }
+        .stat-card.flagged { border-left-color: #F44336; }
+        .stat-card.clean { border-left-color: #4CAF50; }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .packages-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .package-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .package-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .package-header {
+            padding: 20px;
+            border-left: 5px solid;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .package-header.flagged { 
+            border-left-color: #F44336; 
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        }
+        .package-header.clean { 
+            border-left-color: #4CAF50; 
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+        }
+        .package-header.error { 
+            border-left-color: #FF9800; 
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        }
+
+        .package-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .package-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .status-flagged { background: #F44336; }
+        .status-clean { background: #4CAF50; }
+        .status-error { background: #FF9800; }
+
+        .package-content {
+            padding: 0 20px 20px;
+            display: none;
+        }
+
+        .package-content.expanded {
+            display: block;
+        }
+
+        .findings-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .finding-type {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            border-left: 3px solid #007bff;
+        }
+
+        .finding-type-name {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .finding-type-count {
+            font-size: 1.5em;
+            color: #333;
+        }
+
+        .findings-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+        }
+
+        .finding-item {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.3s ease;
+        }
+
+        .finding-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .finding-item:last-child {
+            border-bottom: none;
+        }
+
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .finding-type-badge {
+            background: #007bff;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .finding-detail {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .finding-content {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #666;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+
+        .finding-file {
+            color: #007bff;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .no-content {
+            color: #888;
+            font-style: italic;
+            text-align: center;
+            padding: 50px;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 1em;
+            margin-bottom: 20px;
+            transition: border-color 0.3s ease;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .expand-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .findings-summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Charming Hera</h1>
+            <p>SBOM Security Findings Viewer</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="file-input-container">
+                <input type="file" id="jsonFile" accept=".json" />
+                📁 Select JSON File
+            </div>
+            <p style="margin-top: 15px; color: #666;">
+                Upload your exported findings JSON file from export_findings.py
+            </p>
+        </div>
+
+        <div class="content" id="content">
+            <div class="no-content">
+                <h3>🚀 Ready to analyze your SBOM findings!</h3>
+                <p>Select a JSON file exported from Charming Hera to begin visualization.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let jsonData = null;
+
+        document.getElementById('jsonFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        jsonData = JSON.parse(e.target.result);
+                        console.log('Loaded JSON data:', jsonData); // Debug log
+                        displayData(jsonData);
+                    } catch (error) {
+                        console.error('JSON parsing error:', error);
+                        const content = document.getElementById('content');
+                        content.innerHTML = `
+                            <div class="no-content">
+                                <h3>❌ JSON Parsing Error</h3>
+                                <p><strong>Error:</strong> ${error.message}</p>
+                                <p>Please ensure the file is valid JSON exported from Charming Hera's export_findings.py</p>
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer; color: #007bff;">Show Technical Details</summary>
+                                    <pre style="background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 5px; font-size: 0.9em;">${error.stack}</pre>
+                                </details>
+                            </div>
+                        `;
+                    }
+                };
+                reader.onerror = function(error) {
+                    console.error('File reading error:', error);
+                    const content = document.getElementById('content');
+                    content.innerHTML = `
+                        <div class="no-content">
+                            <h3>❌ File Reading Error</h3>
+                            <p>Could not read the selected file. Please try again or select a different file.</p>
+                        </div>
+                    `;
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function displayData(data) {
+            const content = document.getElementById('content');
+            
+            // Validate data structure
+            if (!data || !data.packages || !Array.isArray(data.packages)) {
+                content.innerHTML = `
+                    <div class="no-content">
+                        <h3>❌ Invalid JSON Structure</h3>
+                        <p>The uploaded file doesn't contain the expected SBOM findings format.</p>
+                        <p>Please ensure you're uploading a file exported from <code>export_findings.py</code></p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Create summary section
+            const summaryHtml = `
+                <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search packages, findings, or content..." />
+                
+                <div class="summary">
+                    <div class="stat-card packages">
+                        <div class="stat-number">${data.packages.length}</div>
+                        <div class="stat-label">📦 Packages</div>
+                    </div>
+                    <div class="stat-card findings">
+                        <div class="stat-number">${data.export_info ? data.export_info.total_findings || 0 : 0}</div>
+                        <div class="stat-label">🔍 Total Findings</div>
+                    </div>
+                    <div class="stat-card flagged">
+                        <div class="stat-number">${data.packages.filter(p => p.status === 'flagged').length}</div>
+                        <div class="stat-label">🚨 Flagged</div>
+                    </div>
+                    <div class="stat-card clean">
+                        <div class="stat-number">${data.packages.filter(p => p.status === 'clean').length}</div>
+                        <div class="stat-label">✅ Clean</div>
+                    </div>
+                </div>
+            `;
+
+            // Create packages section
+            const packagesHtml = data.packages.map(pkg => {
+                // Handle both 'findings' and 'detailed_findings' property names
+                const findings = pkg.detailed_findings || pkg.findings || [];
+                const findingsCount = findings.length;
+                const statusClass = pkg.status;
+                const statusIcon = pkg.status === 'flagged' ? '🚨' : pkg.status === 'clean' ? '✅' : '❌';
+                
+                const findingsByType = Object.entries(pkg.findings_by_type || {})
+                    .map(([type, count]) => `
+                        <div class="finding-type">
+                            <div class="finding-type-name">${type}</div>
+                            <div class="finding-type-count">${count}</div>
+                        </div>
+                    `).join('');
+
+                const findingsList = findings.map(finding => `
+                    <div class="finding-item">
+                        <div class="finding-header">
+                            <span class="finding-type-badge">${finding.type || 'unknown'}</span>
+                        </div>
+                        <div class="finding-detail">${finding.detail || 'No details available'}</div>
+                        ${finding.content ? `<div class="finding-content">${finding.content}</div>` : '<div class="finding-content" style="color: #999;">No content available</div>'}
+                        ${finding.path ? `<div class="finding-file">📁 ${finding.path}</div>` : ''}
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="package-card" data-package="${pkg.ecosystem}-${pkg.name}-${pkg.version}">
+                        <div class="package-header ${statusClass}" onclick="togglePackage(this)">
+                            <div class="package-title">
+                                ${statusIcon} ${pkg.ecosystem} ${pkg.name}==${pkg.version}
+                                <span style="font-size: 0.8em; color: #666; margin-left: 10px;">
+                                    ${findingsCount} findings
+                                </span>
+                            </div>
+                            <div>
+                                <span class="package-status status-${statusClass}">${pkg.status.toUpperCase()}</span>
+                                <span class="expand-icon" style="margin-left: 10px; font-size: 1.2em;">▼</span>
+                            </div>
+                        </div>
+                        <div class="package-content">
+                            ${findingsCount > 0 ? `
+                                <div class="findings-summary">
+                                    ${findingsByType}
+                                </div>
+                                <div class="findings-list">
+                                    ${findingsList}
+                                </div>
+                            ` : '<div style="text-align: center; padding: 20px; color: #999;">No findings detected ✅</div>'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            content.innerHTML = summaryHtml + '<div class="packages-grid">' + packagesHtml + '</div>';
+
+            // Add search functionality
+            document.getElementById('searchBox').addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                const packages = document.querySelectorAll('.package-card');
+                
+                packages.forEach(pkg => {
+                    const text = pkg.textContent.toLowerCase();
+                    if (text.includes(searchTerm)) {
+                        pkg.style.display = 'block';
+                    } else {
+                        pkg.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        function togglePackage(header) {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('.expand-icon');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+            }
+        }
+    </script>
+</body>
+</html>
