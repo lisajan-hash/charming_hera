@@ -197,7 +197,6 @@ The scanner supports multiple SBOM formats:
 
 - **Custom JSON**: Simple array of packages (see `sample_sbom.json`)
 - **CycloneDX JSON**: Standard CycloneDX format (see `sample_sbom_cyclonedx.json`)
-- **SPDX JSON**: Standard SPDX format
 
 **Supported ecosystems:**
 - `pypi` or `python` - Python packages from PyPI
