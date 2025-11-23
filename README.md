@@ -17,36 +17,7 @@
 
 ---
 
-## Architecture Overview
 
-```mermaid
-graph TB
-    A[SBOM File<br/>JSON/XML] --> B[sbom_scanner.py<br/>Main Orchestrator]
-    B --> C[Parse SBOM<br/>CycloneDX/SPDX/Custom]
-    C --> D[SQLite Database<br/>scans.db]
-    B --> E[Docker Engine]
-    
-    E --> F[Docker Container<br/>scanner/scan_package.py]
-    F --> G[Package Installation<br/>PyPI/NPM]
-    G --> H[File Scanning<br/>Detection Engine]
-    
-    H --> I[YARA Rules<br/>scanner/rules.yar]
-    H --> J[Keyword Patterns<br/>Python Regex]
-    H --> K[Content Analysis<br/>Entropy/Base64]
-    
-    H --> L[Findings<br/>JSON Results]
-    L --> D
-    D --> M[export_findings.py<br/>Export Tool]
-    D --> N[Web Viewer<br/>viewer/index.html]
-    
-    M --> O[JSON/CSV/XML<br/>Reports]
-    N --> P[Interactive<br/>Dashboard]
-    
-    style B fill:#e1f5fe
-    style F fill:#f3e5f5
-    style H fill:#e8f5e8
-    style D fill:#fff3e0
-```
 
 ### Architecture Components
 
