@@ -370,12 +370,7 @@ rule KnownMalwareSignature
 }
 ```
 
-**YARA Rule Best Practices:**
-- Use descriptive rule names
-- Include multiple string patterns per rule for better detection
-- Add comments explaining what the rule detects
-- Test rules against known good and bad samples
-- Use case-insensitive matching when appropriate (`nocase`)
+
 
 #### 2. Python Pattern Rules (`scanner/scan_package.py`)
 
@@ -842,18 +837,6 @@ python export_findings.py --output security_review.json
 python -c "import sqlite3,json; results=sqlite3.connect('scans.db').execute('SELECT status,COUNT(*) FROM scans GROUP BY status').fetchall(); print('Summary:', dict(results))"
 ```
 
-### DevOps Integration
-```powershell
-# CI/CD pipeline integration
-python sbom_scanner.py --sbom production.sbom
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ Supply chain scan completed"
-    python export_findings.py --output artifacts/security_scan.json
-} else {
-    Write-Host "❌ Supply chain scan failed"
-    exit 1
-}
-```
 
 ### Threat Research Workflow  
 ```powershell
@@ -873,16 +856,12 @@ To extend the scanner's capabilities:
 
 1. **Add Detection Rules**: Edit `scanner/rules.yar` with new YARA rules
 2. **Enhance Patterns**: Modify keyword lists in `scanner/scan_package.py`
-3. **New Ecosystems**: Add support for Go, Rust, etc. in the install_package function
-4. **Output Formats**: Extend `export_findings.py` for CSV, XML, SARIF formats
+3. **Output Formats**: Extend `export_findings.py` for CSV, XML, SARIF formats
 
 ## License & Disclaimer
 
 This tool is for security research and defensive purposes. Users are responsible for:
-- Compliance with applicable laws and regulations
 - Proper handling of potentially malicious packages  
-- Implementing appropriate security controls in production environments
-- Regular updates and maintenance of detection rules
 
 The scanner provides indicators and context but requires human analysis for final threat determination.
 
