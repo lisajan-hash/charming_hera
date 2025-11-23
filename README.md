@@ -17,9 +17,67 @@
 
 ---
 
-## Overview
+## Architecture Overview
 
-Charming Hera installs packages in isolated Docker containers and performs deep analysis for suspicious code patterns, malicious behaviors, and supply chain attacks.
+```mermaid
+graph TB
+    A[SBOM File<br/>JSON/XML] --> B[sbom_scanner.py<br/>Main Orchestrator]
+    B --> C[Parse SBOM<br/>CycloneDX/SPDX/Custom]
+    C --> D[SQLite Database<br/>scans.db]
+    B --> E[Docker Engine]
+    
+    E --> F[Docker Container<br/>scanner/scan_package.py]
+    F --> G[Package Installation<br/>PyPI/NPM]
+    G --> H[File Scanning<br/>Detection Engine]
+    
+    H --> I[YARA Rules<br/>scanner/rules.yar]
+    H --> J[Keyword Patterns<br/>Python Regex]
+    H --> K[Content Analysis<br/>Entropy/Base64]
+    
+    H --> L[Findings<br/>JSON Results]
+    L --> D
+    D --> M[export_findings.py<br/>Export Tool]
+    D --> N[Web Viewer<br/>viewer/index.html]
+    
+    M --> O[JSON/CSV/XML<br/>Reports]
+    N --> P[Interactive<br/>Dashboard]
+    
+    style B fill:#e1f5fe
+    style F fill:#f3e5f5
+    style H fill:#e8f5e8
+    style D fill:#fff3e0
+```
+
+### Architecture Components
+
+**🔧 Core Components:**
+- **Main Orchestrator** (`sbom_scanner.py`): Coordinates scanning workflow, manages database, handles Docker operations
+- **SBOM Parser**: Supports multiple formats (CycloneDX, SPDX, Custom JSON) and extracts package information
+- **Database Layer**: SQLite storage for scan results, deduplication, and historical data
+
+**🐳 Containerization:**
+- **Docker Engine**: Provides isolated execution environment for package analysis
+- **Scanner Container** (`scanner/scan_package.py`): Runs inside Docker to install and analyze packages safely
+
+**🔍 Detection Engine:**
+- **YARA Rules** (`scanner/rules.yar`): Signature-based detection for known malware patterns
+- **Keyword Patterns**: Fast string matching for common threat indicators
+- **Regex Patterns**: Sophisticated pattern matching for code analysis
+- **Content Analysis**: Entropy calculation, Base64 detection, binary analysis
+
+**📊 Output & Visualization:**
+- **Export Tool** (`export_findings.py`): Generates reports in multiple formats
+- **Web Viewer** (`viewer/index.html`): Interactive dashboard for result analysis
+
+### Data Flow
+
+1. **Input**: SBOM file (JSON/XML) containing package list
+2. **Parsing**: Extract package names, versions, and ecosystems
+3. **Orchestration**: Check database for existing scans, manage Docker containers
+4. **Scanning**: Install packages in isolated containers, run detection engine
+5. **Analysis**: Apply multiple detection techniques (YARA, keywords, patterns)
+6. **Storage**: Save results to SQLite database with full context
+7. **Output**: Export to JSON/CSV or view in web dashboard
 
 ## Features
 
