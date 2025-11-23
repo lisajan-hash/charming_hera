@@ -340,23 +340,287 @@ python3 export_findings.py [options]
 
 ### Customizing Detection Rules
 
-Edit `scanner/rules.yar` to add custom YARA rules:
+The scanner uses a multi-layered detection approach combining YARA rules and Python-based pattern matching. You can extend the detection capabilities by adding rules in two locations:
 
+#### 1. YARA Rules (`scanner/rules.yar`)
+
+YARA rules provide powerful pattern matching for suspicious code patterns, malware signatures, and known attack vectors.
+
+**Adding a new YARA rule:**
 ```yara
-rule CustomMaliciousPattern
+rule SuspiciousObfuscationPattern
 {
     strings:
-        $suspicious = "eval(atob("
-        $crypto = "crypto.subtle"
+        $obfuscated_eval = "eval(atob("
+        $dynamic_import = "import(__import__('base64').b64decode("
+        $hex_encoded = { 5C 78 [2-8] }  // \xXX patterns
+        
     condition:
         any of them
 }
+
+rule KnownMalwareSignature  
+{
+    strings:
+        $bad_domain = "malicious-c2-server.com"
+        $suspicious_useragent = "Mozilla/5.0 (MalwareBot/1.0)"
+        
+    condition:
+        all of them
+}
 ```
 
-Then rebuild the Docker image:
-```powershell
-docker build -t sbom_scanner_image:latest .\scanner
+**YARA Rule Best Practices:**
+- Use descriptive rule names
+- Include multiple string patterns per rule for better detection
+- Add comments explaining what the rule detects
+- Test rules against known good and bad samples
+- Use case-insensitive matching when appropriate (`nocase`)
+
+#### 2. Python Pattern Rules (`scanner/scan_package.py`)
+
+The Python scanner includes hardcoded pattern lists for common threats. Detection can be performed using **simple keyword matching** or **regular expression patterns**.
+
+**Keyword-based Detection:**
+The scanner uses predefined keyword lists organized by threat categories:
+
+```python
+EXECUTION_KEYWORDS = ["exec", "execute", "eval", "subprocess", "popen", "os.system", "shell=True"]
+NETWORK_KEYWORDS = ["socket.socket", "urllib.request", "requests.", "fetch(", "XMLHttpRequest"]
+FILESYSTEM_KEYWORDS = ["fs.readFile", "fs.writeFile", "open(", "chmod(", "unlink(", "os.remove"]
+CRYPTO_KEYWORDS = ["crypto.", "base64.", "btoa(", "atob(", "encrypt(", "decrypt("]
+ENV_KEYWORDS = ["process.env", "os.environ", "getenv(", "setenv(", "process.cwd"]
 ```
+
+**Regular Expression Pattern Detection:**
+For more sophisticated detection, regex patterns are used:
+
+```python
+# Base64 encoded content detection
+BASE64_RE = re.compile(r"(?:(?:[A-Za-z0-9+/]{4}){3,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)")
+
+# Hex escape sequences
+HEX_PATTERN = re.compile(r"\\x[0-9a-fA-F]{2}")
+
+# Unicode escape sequences  
+UNICODE_PATTERN = re.compile(r"\\u[0-9a-fA-F]{4}")
+
+# Obfuscated property access
+OBFUSCATED_PATTERN = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*\[[\'\"]\w+[\'\"]\]')
+
+# Dynamic imports
+DYNAMIC_REQUIRE = re.compile(r'require\s*\(\s*[a-zA-Z_]')
+
+# Eval/exec patterns
+EVAL_PATTERN = re.compile(r'(eval|exec)\s*\(')
+```
+
+**Extending Keyword Lists:**
+```python
+# Add new keywords to existing categories
+EXECUTION_KEYWORDS.extend([
+    "Function(",      # JavaScript function constructor
+    "setTimeout",     # Timer-based code execution
+    "setInterval",    # Repeated code execution
+    "child_process",  # Node.js child process
+])
+
+NETWORK_KEYWORDS.extend([
+    "axios",          # HTTP client library
+    "fetch(",         # Modern fetch API
+    "XMLHttpRequest", # Legacy AJAX
+])
+```
+
+**Adding New Regex Patterns:**
+```python
+# Add custom regex patterns for specific threats
+CUSTOM_PATTERNS = [
+    re.compile(r'hardcoded.*password', re.IGNORECASE),  # Case-insensitive password detection
+    re.compile(r'api[_-]?key\s*[:=]\s*["\'][A-Za-z0-9]{32,}["\']'),  # API key patterns
+    re.compile(r'(?i)todo.*hack|hack.*todo'),  # Suspicious comments
+]
+
+# Use in detection loop
+for pattern in CUSTOM_PATTERNS:
+    for match in pattern.finditer(content):
+        findings.append({
+            'type': 'custom_pattern',
+            'detail': f'Custom pattern match: {match.group(0)}',
+            'content': extract_context(content, match),
+            'path': file_path,
+            'line': content[:match.start()].count('\n') + 1
+        })
+```
+
+**Detection Logic:**
+- **Keywords**: Simple substring matching (`keyword in content`)
+- **Regex Patterns**: Compiled regex matching with `finditer()` for multiple matches
+- **Context Extraction**: 100-character window around matches for evidence
+- **Categorization**: Each finding tagged with threat type and severity indicators
+
+**Adding new detection categories:**
+```python
+def detect_custom_threats(content, file_path):
+    """Custom threat detection function"""
+    findings = []
+    
+    # Example: Detect hardcoded credentials
+    credential_patterns = [
+        r'password\s*=\s*["\'][^"\']{8,}["\']',
+        r'api_key\s*=\s*["\'][A-Za-z0-9]{32,}["\']',
+        r'secret\s*=\s*["\'][^"\']{16,}["\']',
+    ]
+    
+    for pattern in credential_patterns:
+        for match in re.finditer(pattern, content, re.IGNORECASE):
+            findings.append({
+                'type': 'credentials',
+                'detail': 'Potential hardcoded credentials detected',
+                'content': extract_context(content, match.start(), match.end()),
+                'path': file_path,
+                'line': content[:match.start()].count('\n') + 1
+            })
+    
+    return findings
+```
+
+#### 3. Testing New Rules
+
+**Test YARA rules:**
+```bash
+# Test against a specific file
+yara scanner/rules.yar /path/to/test/file
+
+# Test against a directory
+yara scanner/rules.yar /path/to/test/directory
+```
+
+**Test Python patterns:**
+```bash
+# Run scanner on test package
+python sbom_scanner.py --sbom test_package.json --show-results
+
+# Check results
+python export_findings.py --package test-package
+```
+
+**Validate rule effectiveness:**
+- Test against known malicious packages
+- Test against legitimate packages to avoid false positives
+- Monitor detection rates and accuracy
+- Update rules based on new threat intelligence
+
+#### 4. Rule Categories and Examples
+
+**Execution Threats:**
+- Code execution: `eval()`, `exec()`, `subprocess`
+- Dynamic imports: `__import__()`, `importlib`
+- Shell commands: `os.system()`, `os.popen()`
+
+**Network Threats:**
+- HTTP requests: `requests`, `urllib`, `http.client`
+- Socket connections: `socket`, `ssl`
+- DNS queries: Custom DNS libraries
+
+**File System Threats:**
+- File operations: `open()`, `os.remove()`, `shutil`
+- Directory traversal: `../` patterns
+- Permission changes: `os.chmod()`, `os.chown()`
+
+**Cryptographic Threats:**
+- Weak encryption: `md5`, `sha1` (deprecated)
+- Suspicious encoding: Large base64 blocks
+- Custom crypto implementations
+
+**Environment Threats:**
+- Environment access: `os.environ`, `getenv()`
+- System information: `platform`, `sys.version`
+- User data access: Home directory, config files
+
+#### 5. Advanced Rule Techniques
+
+**Context-aware detection:**
+```python
+def detect_suspicious_imports(content, file_path):
+    """Detect dangerous import combinations"""
+    findings = []
+    
+    # Flag packages that import both networking and file system modules
+    has_network = bool(re.search(r'\b(import requests|from urllib|import socket)', content))
+    has_filesystem = bool(re.search(r'\b(import os|from shutil|import glob)', content))
+    
+    if has_network and has_filesystem:
+        findings.append({
+            'type': 'suspicious_combo',
+            'detail': 'Package combines network and filesystem access',
+            'content': 'Network + filesystem access detected',
+            'path': file_path,
+            'line': 1
+        })
+    
+    return findings
+```
+
+**Entropy-based detection:**
+```python
+def detect_high_entropy(content, file_path):
+    """Detect potentially obfuscated content using entropy analysis"""
+    import math
+    
+    def calculate_entropy(text):
+        if not text:
+            return 0
+        entropy = 0
+        length = len(text)
+        seen = set(text)
+        
+        for char in seen:
+            p = text.count(char) / length
+            entropy -= p * math.log2(p)
+        
+        return entropy
+    
+    findings = []
+    lines = content.split('\n')
+    
+    for i, line in enumerate(lines):
+        if len(line.strip()) > 50:  # Only check longer lines
+            entropy = calculate_entropy(line)
+            if entropy > 4.5:  # High entropy threshold
+                findings.append({
+                    'type': 'high_entropy',
+                    'detail': f'High entropy content (entropy: {entropy:.2f})',
+                    'content': line[:100] + '...' if len(line) > 100 else line,
+                    'path': file_path,
+                    'line': i + 1
+                })
+    
+    return findings
+```
+
+#### 6. Deployment and Updates
+
+**After adding rules:**
+```bash
+# Rebuild the Docker image with new rules
+docker build -t sbom_scanner_image:latest ./scanner
+
+# Test the updated scanner
+python sbom_scanner.py --sbom test_sbom.json --show-results
+```
+
+**Rule maintenance:**
+- Regularly update YARA rules with new threat signatures
+- Monitor false positive rates and adjust thresholds
+- Review and update Python patterns based on new attack techniques
+- Consider community threat intelligence feeds for rule inspiration
+
+**Performance considerations:**
+- YARA rules are fast but complex rules can slow scanning
+- Python regex patterns should be optimized for performance
+- Consider rule ordering - check common patterns first
+- Use non-greedy quantifiers to prevent excessive backtracking
 
 ### Database Schema
 
