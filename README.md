@@ -71,13 +71,36 @@ graph TB
 
 ### Data Flow
 
-1. **Input**: SBOM file (JSON/XML) containing package list
-2. **Parsing**: Extract package names, versions, and ecosystems
-3. **Orchestration**: Check database for existing scans, manage Docker containers
-4. **Scanning**: Install packages in isolated containers, run detection engine
-5. **Analysis**: Apply multiple detection techniques (YARA, keywords, patterns)
-6. **Storage**: Save results to SQLite database with full context
-7. **Output**: Export to JSON/CSV or view in web dashboard
+```mermaid
+graph TD
+    A[SBOM File<br/>JSON/XML] --> B[Parse SBOM<br/>Extract Packages]
+    B --> C[Check Database<br/>Already Scanned?]
+    
+    C -->|Yes| D[Skip Package]
+    C -->|No| E[Build/Start<br/>Docker Container]
+    
+    E --> F[Install Package<br/>PyPI/NPM]
+    F --> G[Scan Package Files<br/>Detection Engine]
+    
+    G --> H[Apply Detection Rules<br/>Keywords + Regex + YARA]
+    H --> I[Collect Findings<br/>Context & Evidence]
+    
+    I --> J[Store Results<br/>SQLite Database]
+    J --> K[Update Statistics<br/>Clean/Flagged/Error]
+    
+    D --> L{More<br/>Packages?}
+    K --> L
+    
+    L -->|Yes| C
+    L -->|No| M[Generate Reports<br/>JSON/CSV/Web View]
+    
+    M --> N[Final Output<br/>Security Analysis]
+    
+    style A fill:#e8f5e8
+    style N fill:#ffebee
+    style G fill:#fff3e0
+    style H fill:#f3e5f5
+```
 
 ## Features
 
