@@ -57,7 +57,68 @@ DB_PATH = os.environ.get("SBOM_SCANNER_DB", "scans.db")
 IMAGE_NAME = os.environ.get("SBOM_SCANNER_IMAGE", "sbom_scanner_image:latest")
 
 
-def ensure_db(path=DB_PATH):
+def parse_sbom(sbom_data):
+    """
+    Parse SBOM data supporting multiple formats:
+    - Custom format: [{"ecosystem": "pypi", "name": "pkg", "version": "1.0"}]
+    - CycloneDX: {"bomFormat": "CycloneDX", "components": [...]}
+    - SPDX: {"spdxVersion": "SPDX-2.3", "packages": [...]}
+    """
+    if isinstance(sbom_data, list):
+        # Custom format
+        return sbom_data
+    elif isinstance(sbom_data, dict):
+        if sbom_data.get("bomFormat") == "CycloneDX":
+            components = sbom_data.get("components", [])
+            parsed = []
+            for comp in components:
+                name = comp.get("name")
+                version = comp.get("version")
+                purl = comp.get("purl", "")
+                ecosystem = None
+                if purl.startswith("pkg:pypi/"):
+                    ecosystem = "pypi"
+                elif purl.startswith("pkg:npm/"):
+                    ecosystem = "npm"
+                elif purl.startswith("pkg:deb/"):
+                    ecosystem = "deb"  # If supported
+                # Add more ecosystems as needed
+                if ecosystem and name:
+                    if not version:
+                        version = "latest"
+                    parsed.append({"ecosystem": ecosystem, "name": name, "version": version})
+            return parsed
+        elif "spdxVersion" in sbom_data:
+            # SPDX format
+            packages = sbom_data.get("packages", [])
+            parsed = []
+            for pkg in packages:
+                name = pkg.get("name")
+                version = pkg.get("versionInfo")
+                # Determine ecosystem from externalRefs or name patterns
+                ecosystem = None
+                external_refs = pkg.get("externalRefs", [])
+                for ref in external_refs:
+                    if ref.get("referenceType") == "purl":
+                        purl = ref.get("referenceLocator", "")
+                        if purl.startswith("pkg:pypi/"):
+                            ecosystem = "pypi"
+                        elif purl.startswith("pkg:npm/"):
+                            ecosystem = "npm"
+                        break
+                if not ecosystem:
+                    # Fallback: guess from name
+                    if name and ("-" in name or "." in name):  # Rough heuristic
+                        ecosystem = "pypi"  # Default to pypi
+                if ecosystem and name:
+                    if not version:
+                        version = "latest"
+                    parsed.append({"ecosystem": ecosystem, "name": name, "version": version})
+            return parsed
+    return []
+
+
+def ensure_db(path):
     conn = sqlite3.connect(path)
     cur = conn.cursor()
     cur.execute(
@@ -157,6 +218,47 @@ def run_scan_in_container(image_name, ecosystem, name, version, timeout=300):
             return {"error": "timeout", "stdout": "", "stderr": "scan timed out"}
 
     return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+
+
+def mock_scan_package(ecosystem, name, version):
+    """Simulate a package scan with fake results for testing purposes"""
+    import random
+    import time
+    
+    colored_print("🚀 Running mock scan...", Colors.BLUE)
+    time.sleep(0.5)  # Simulate processing time
+    
+    # Generate fake results based on package name (deterministic for testing)
+    random.seed(hash(f"{ecosystem}:{name}:{version}"))
+    
+    # Some packages are "flagged", some are "clean"
+    if random.random() < 0.3:  # 30% chance of being flagged
+        status = "flagged"
+        findings = []
+        num_findings = random.randint(1, 5)
+        for i in range(num_findings):
+            finding_types = ["security", "vulnerability", "malware", "license", "deprecated"]
+            finding_type = random.choice(finding_types)
+            findings.append({
+                "type": finding_type,
+                "detail": f"Mock {finding_type} issue #{i+1}",
+                "content": f"Sample content for {finding_type} finding",
+                "path": f"/scan/{name}/file_{i+1}.py",
+                "line": random.randint(1, 100)
+            })
+    else:
+        status = "clean"
+        findings = []
+    
+    result = {
+        "status": status,
+        "findings": findings,
+        "scan_time": time.time(),
+        "package": f"{ecosystem}/{name}=={version}",
+        "mock": True
+    }
+    
+    return {"returncode": 0, "stdout": json.dumps(result), "stderr": ""}
 
 
 def show_results(db_path):
@@ -343,6 +445,12 @@ Examples:
   # Skip Docker image rebuild (faster for repeated scans)
   python sbom_scanner.py --sbom my_sbom.json --no-build --show-results
   
+  # Dry run to test SBOM parsing without scanning
+  python sbom_scanner.py --sbom my_sbom.json --dry-run
+  
+  # Mock scan for testing without Docker
+  python sbom_scanner.py --sbom my_sbom.json --mock-scan --show-results
+  
   # Use custom database and Docker image
   python sbom_scanner.py --sbom my_sbom.json --db custom.db --image my_scanner:v1.0
   
@@ -375,6 +483,10 @@ SBOM Format:
     # Behavior flags
     p.add_argument("--no-build", action="store_true", 
                    help="Skip Docker image build (assumes image already exists)")
+    p.add_argument("--dry-run", action="store_true", 
+                   help="Parse SBOM and show what would be scanned without running actual scans")
+    p.add_argument("--mock-scan", action="store_true", 
+                   help="Simulate scanning with fake results (for testing without Docker)")
     p.add_argument("--show-results", action="store_true", 
                    help="Display scan results summary after completion")
     
@@ -400,11 +512,36 @@ SBOM Format:
         raise SystemExit(1)
 
     with open(args.sbom, "r", encoding="utf-8") as f:
-        sbom = json.load(f)
+        sbom_raw = json.load(f)
+
+    sbom = parse_sbom(sbom_raw)
+
+    # Handle dry run mode
+    if args.dry_run:
+        colored_print("🔍 DRY RUN MODE - Parsing SBOM without scanning", Colors.CYAN, bold=True)
+        colored_print("=" * 60, Colors.BLUE, bold=True)
+        colored_print(f"📄 SBOM File: {args.sbom}", Colors.WHITE)
+        colored_print(f"📦 Packages found: {len(sbom)}", Colors.GREEN)
+        colored_print("", Colors.WHITE)
+        
+        for i, item in enumerate(sbom, 1):
+            ecosystem = item.get("ecosystem", "unknown")
+            name = item.get("name", "unknown")
+            version = item.get("version", "latest")
+            
+            if not version or version.strip() == "" or version.lower() in ("null", "none", "undefined"):
+                version = "latest"
+            
+            colored_print(f"{i:2d}. {ecosystem} {name}=={version}", Colors.CYAN)
+        
+        colored_print("", Colors.WHITE)
+        colored_print("✅ SBOM parsing successful!", Colors.GREEN, bold=True)
+        colored_print("💡 To run actual scans, ensure Docker is installed and run without --dry-run", Colors.YELLOW)
+        return
 
     conn = ensure_db(args.db)
 
-    if not args.no_build:
+    if not args.no_build and not args.mock_scan:
         build_image(args.image)
 
     summary = {"scanned": 0, "skipped": 0, "errors": 0, "flagged": 0, "clean": 0}
@@ -432,7 +569,11 @@ SBOM Format:
             summary["skipped"] += 1
             continue
 
-        res = run_scan_in_container(args.image, ecosystem, name, version)
+        # Use mock scanning if requested, otherwise use real Docker scanning
+        if args.mock_scan:
+            res = mock_scan_package(ecosystem, name, version)
+        else:
+            res = run_scan_in_container(args.image, ecosystem, name, version)
 
         if res.get("returncode") is None:
             # timeout or other wrapper error

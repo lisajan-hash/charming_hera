@@ -63,6 +63,13 @@ chmod +x setup_linux.sh
 ./setup_linux.sh
 ```
 
+Note: If the script reports "Unsupported Linux distribution", you can either install Python 3.7+ and Docker manually as shown in the Manual Setup section below, or run the installer without attempting package installs and with the Bash interpreter:
+
+```bash
+# Run non-install steps only (useful in minimal/distroless environments or when sudo is not available)
+bash setup_linux.sh --skip-install
+```
+
 #### Option 2: Manual Setup
 
 **Windows:**
@@ -132,6 +139,18 @@ python3 sbom_scanner.py --sbom sample_sbom.json --show-results
 python3 sbom_scanner.py --sbom sample_sbom.json --no-build --show-results
 ```
 
+### Supported SBOM Formats
+
+The scanner supports multiple SBOM formats:
+
+- **Custom JSON**: Simple array of packages (see `sample_sbom.json`)
+- **CycloneDX JSON**: Standard CycloneDX format (see `sample_sbom_cyclonedx.json`)
+- **SPDX JSON**: Standard SPDX format
+
+**Supported ecosystems:**
+- `pypi` or `python` - Python packages from PyPI
+- `npm`, `node`, or `javascript` - Node.js packages from npm
+
 ### View Results
 
 #### Windows
@@ -196,8 +215,9 @@ xdg-open viewer/index.html
 
 ## Creating Your SBOM File
 
-Create a JSON file with your packages to scan:
+Create a JSON file with your packages to scan. The scanner supports multiple formats:
 
+### Custom Format (Simple)
 ```json
 [
   {"ecosystem": "pypi", "name": "requests", "version": "2.31.0"},
@@ -205,6 +225,28 @@ Create a JSON file with your packages to scan:
   {"ecosystem": "pypi", "name": "urllib3", "version": "2.0.4"},
   {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"}
 ]
+```
+
+### CycloneDX Format
+```json
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "components": [
+    {
+      "type": "library",
+      "name": "requests",
+      "version": "2.31.0",
+      "purl": "pkg:pypi/requests@2.31.0"
+    },
+    {
+      "type": "library", 
+      "name": "left-pad",
+      "version": "1.3.0",
+      "purl": "pkg:npm/left-pad@1.3.0"
+    }
+  ]
+}
 ```
 
 **Supported ecosystems:**
